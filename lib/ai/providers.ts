@@ -26,11 +26,14 @@ export const myProvider = isTestEnvironment
   : customProvider({
       languageModels: {
         'chat-model': openai.responses('gpt-4o'),
-        'chat-model-reasoning': openai.responses('o4-mini'),
+        'chat-model-reasoning': wrapLanguageModel({
+          model: openai.responses('o4-mini'),
+          middleware: extractReasoningMiddleware({ tagName: 'think' }),
+        }),
         'title-model': openai.responses('gpt-4o-mini'),
         'artifact-model': openai.responses('gpt-4o'),
       },
       imageModels: {
-        'small-model': xai.imageModel('grok-2-image'),
+        'small-model': openai.image('gpt-image-1'),
       },
     });
