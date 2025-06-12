@@ -171,6 +171,11 @@ export async function POST(request: Request) {
               dataStream,
             }),
           },
+          providerOptions: {
+            openai: {
+              reasoningSummary: 'detailed',
+            },
+          },
           onFinish: async ({ response }) => {
             if (session.user?.id) {
               try {
