@@ -12,6 +12,7 @@ import {
   reasoningModel,
   titleModel,
 } from './models.test';
+import { isTestEnvironment } from '../constants';
 
 export const myProvider = isTestEnvironment
   ? customProvider({
@@ -30,6 +31,6 @@ export const myProvider = isTestEnvironment
         'artifact-model': openai.responses('gpt-4o'),
       },
       imageModels: {
-        'small-model': openai.image('gpt-image-1'),
+        'small-model': xai.imageModel('grok-2-image'),
       },
     });
