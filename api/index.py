@@ -1,7 +1,7 @@
 from logging import Logger
 import os
 import json
-from typing import List
+from openai.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query
@@ -11,7 +11,7 @@ from .utils.prompt import ClientMessage, convert_to_openai_messages
 from .utils.tools import get_current_weather
 import logging
 
-load_dotenv(".env.local")
+_ = load_dotenv(".env.local")
 
 app = FastAPI()
 
@@ -21,7 +21,7 @@ client = OpenAI(
 
 
 class Request(BaseModel):
-    messages: List[ClientMessage]
+    messages: list[ClientMessage]
 
 
 available_tools = {
@@ -29,37 +29,18 @@ available_tools = {
 }
 
 
-def stream_text(messages: List[ClientMessage], protocol: str = 'data'):
+def stream_text(messages: list[ChatCompletionMessageParam]):
     stream = client.chat.completions.create(
         messages=messages,
         model="gpt-4o",
         stream=True,
-        tools=[{
-            "type": "function",
-            "function": {
-                "name": "get_current_weather",
-                "description": "Get the current weather in a given location",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                            "type": "string",
-                            "description": "The city and state, e.g. San Francisco, CA",
-                        },
-                        "unit": {
-                            "type": "string",
-                            "enum": ["celsius", "fahrenheit"]},
-                    },
-                    "required": ["location", "unit"],
-                },
-            },
-        }]
+        tools=[],
     )
 
     # When protocol is set to "text", you will send a stream of plain text chunks
     # https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol#text-stream-protocol
 
-    if (protocol == 'text'):
+    if protocol == "text":
         for chunk in stream:
             for choice in chunk.choices:
                 if choice.finish_reason == "stop":
@@ -70,7 +51,7 @@ def stream_text(messages: List[ClientMessage], protocol: str = 'data'):
     # When protocol is set to "data", you will send a stream data part chunks
     # https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol#data-stream-protocol
 
-    elif (protocol == 'data'):
+    elif protocol == "data":
         draft_tool_calls = []
         draft_tool_calls_index = -1
 
@@ -84,19 +65,22 @@ def stream_text(messages: List[ClientMessage], protocol: str = 'data'):
                         txt = '9:{{"toolCallId":"{id}","toolName":"{name}","args":{args}}}\n'.format(
                             id=tool_call["id"],
                             name=tool_call["name"],
-                            args=tool_call["arguments"])
+                            args=tool_call["arguments"],
+                        )
                         logging.warning(txt)
                         yield txt
 
                     for tool_call in draft_tool_calls:
                         tool_result = available_tools[tool_call["name"]](
-                            **json.loads(tool_call["arguments"]))
+                            **json.loads(tool_call["arguments"])
+                        )
 
                         txt = 'a:{{"toolCallId":"{id}","toolName":"{name}","args":{args},"result":{result}}}\n'.format(
                             id=tool_call["id"],
                             name=tool_call["name"],
                             args=tool_call["arguments"],
-                            result=json.dumps(tool_result))
+                            result=json.dumps(tool_result),
+                        )
                         logging.warning(txt)
                         yield txt
 
@@ -106,16 +90,19 @@ def stream_text(messages: List[ClientMessage], protocol: str = 'data'):
                         name = tool_call.function.name
                         arguments = tool_call.function.arguments
 
-                        if (id is not None):
+                        if id is not None:
                             draft_tool_calls_index += 1
                             draft_tool_calls.append(
-                                {"id": id, "name": name, "arguments": ""})
+                                {"id": id, "name": name, "arguments": ""}
+                            )
 
                         else:
-                            draft_tool_calls[draft_tool_calls_index]["arguments"] += arguments
+                            draft_tool_calls[draft_tool_calls_index]["arguments"] += (
+                                arguments
+                            )
 
                 else:
-                    txt = '0:{text}\n'.format(text=json.dumps(choice.delta.content))
+                    txt = "0:{text}\n".format(text=json.dumps(choice.delta.content))
                     logging.warning(txt)
                     yield txt
 
@@ -124,23 +111,24 @@ def stream_text(messages: List[ClientMessage], protocol: str = 'data'):
                 prompt_tokens = usage.prompt_tokens
                 completion_tokens = usage.completion_tokens
 
-                txt ='d:{{"finishReason":"{reason}","usage":{{"promptTokens":{prompt},"completionTokens":{completion}}}}}\n'.format(
-                    reason="tool-calls" if len(
-                        draft_tool_calls) > 0 else "stop",
+                txt = 'd:{{"finishReason":"{reason}","usage":{{"promptTokens":{prompt},"completionTokens":{completion}}}}}\n'.format(
+                    reason="tool-calls" if len(draft_tool_calls) > 0 else "stop",
                     prompt=prompt_tokens,
-                    completion=completion_tokens
+                    completion=completion_tokens,
                 )
                 print(txt)
                 yield txt
 
+
 logger: Logger = logging.getLogger("uvicorn")
 logger.info("Starting server")
 
+
 @app.post("/api/chat")
-async def handle_chat_data(request: Request, protocol: str = Query('data')):
+async def handle_chat_data(request: Request):
     messages = request.messages
     openai_messages = convert_to_openai_messages(messages)
 
-    response = StreamingResponse(stream_text(openai_messages, protocol))
-    response.headers['x-vercel-ai-data-stream'] = 'v1'
+    response = StreamingResponse(stream_text(openai_messages))
+    response.headers["x-vercel-ai-data-stream"] = "v1"
     return response

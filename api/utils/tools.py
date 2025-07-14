@@ -1,7 +1,11 @@
 import random
+from conatus import action
 
 
-def get_current_weather(location, unit="fahrenheit"):
+@action
+def get_current_weather(
+    location: str, unit: str = "fahrenheit"
+) -> dict[str, int | str]:
     if unit == "celsius":
         temperature = random.randint(-34, 43)
     else:
